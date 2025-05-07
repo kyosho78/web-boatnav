@@ -1,17 +1,9 @@
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 
-// Fix marker icon issues
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-});
-
-// Recenter map when position changes
+// Recenter map on location change
 function RecenterMap({ position }) {
   const map = useMap();
   useEffect(() => {
@@ -30,24 +22,24 @@ export default function MapView() {
   const [tracking, setTracking] = useState(false);
   const watchId = useRef(null);
 
+  // Listen for compass heading (0–360)
   useEffect(() => {
     const handleOrientation = event => {
-      if (event.alpha !== null) {
-        setHeading(event.alpha.toFixed(0)); // 0–360 degrees
+      if (event.alpha != null) {
+        setHeading(event.alpha.toFixed(0));
       }
     };
     window.addEventListener("deviceorientationabsolute", handleOrientation, true);
     window.addEventListener("deviceorientation", handleOrientation, true);
-
     return () => {
       window.removeEventListener("deviceorientationabsolute", handleOrientation);
       window.removeEventListener("deviceorientation", handleOrientation);
     };
   }, []);
 
+  // Start tracking
   const startTracking = () => {
     if (!navigator.geolocation) return alert("Geolocation not supported");
-
     watchId.current = navigator.geolocation.watchPosition(
       pos => {
         const { latitude, longitude, speed } = pos.coords;
@@ -62,7 +54,6 @@ export default function MapView() {
       },
       { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
     );
-
     setTracking(true);
   };
 
@@ -74,25 +65,51 @@ export default function MapView() {
     setTracking(false);
   };
 
+  // Custom rotating arrow icon
+  const arrowIcon = useMemo(() => {
+    return L.divIcon({
+      html: `<img src="${import.meta.env.BASE_URL}arrow_up.png" style="transform: rotate(${heading}deg); width: 40px; height: 40px; transition: transform 0.2s ease-out;" />`,
+      iconSize: [40, 40],
+      className: "custom-arrow-icon"
+    });
+  }, [heading]);
+
   return (
     <>
-      {/* Compass and info panel */}
-      <div style={{ position: "absolute", top: 50, right: 10, zIndex: 1000 }}>
-        <img
-          src="/compass_arrow.png"
-          alt="Compass"
+      {/* Top-right: Start Tracking + Buy Me a Coffee */}
+      <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000, display: "flex", alignItems: "center", gap: "40px" }}>
+        <a
+          href="https://buymeacoffee.com/boatnav"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <img
+            src={`${import.meta.env.BASE_URL}bmc_button.png`}
+            alt="Buy Me a Coffee"
+            style={{ height: "40px", width: "auto" }}
+          />
+        </a>
+        <button
+          onClick={tracking ? stopTracking : startTracking}
           style={{
-            width: "60px",
-            height: "60px",
-            transform: `rotate(${heading}deg)`,
-            transformOrigin: "center center",
-            marginBottom: "10px",
+            padding: "10px",
+            backgroundColor: tracking ? "#e91e63" : "#1976d2",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer",
           }}
-        />
+        >
+          {tracking ? "Stop Tracking" : "Start Tracking"}
+        </button>
+      </div>
+
+      {/* Heading & Speed Display */}
+      <div style={{ position: "absolute", top: 50, right: 10, zIndex: 1000 }}>
         <div
           style={{
             backgroundColor: "white",
-            padding: "6px 10px",
+            padding: "8px 10px",
             borderRadius: "4px",
             boxShadow: "0 0 5px rgba(0,0,0,0.2)",
             marginBottom: "10px",
@@ -103,43 +120,21 @@ export default function MapView() {
         </div>
       </div>
 
-      {/* Start/Stop Tracking Button */}
-      <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000 }}>
-        <button
-          onClick={tracking ? stopTracking : startTracking}
-          style={{
-            padding: "8px",
-            backgroundColor: tracking ? "#e91e63" : "#1976d2",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-          }}
-              >
-                  {tracking ? "Stop Tracking" : "Start Tracking"}
-              </button>
-          </div>
-
-          {/* Map */}
-          <MapContainer center={position} zoom={15} style={{ height: "100vh", width: "100%" }}>
-              {/* Base map */}
-              <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-
-              {/* Seamarks overlay */}
-              <TileLayer
-                  attribution='&copy; <a href="https://www.openseamap.org">OpenSeaMap</a>'
-                  url="https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png"
-              />
-
-              <Marker position={position}>
-                  <Popup>You are here</Popup>
-              </Marker>
-              <RecenterMap position={position} />
-          </MapContainer>
-
-      </>
+      {/* Main Map */}
+      <MapContainer center={position} zoom={15} style={{ height: "100vh", width: "100%" }}>
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <TileLayer
+          attribution='&copy; <a href="https://www.openseamap.org">OpenSeaMap</a>'
+          url="https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png"
+        />
+        <Marker position={position} icon={arrowIcon}>
+          <Popup>You are here</Popup>
+        </Marker>
+        <RecenterMap position={position} />
+      </MapContainer>
+    </>
   );
 }
